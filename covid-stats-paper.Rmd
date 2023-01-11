@@ -1,0 +1,461 @@
+---
+title: "The Social and Political Determinants of Covid-19 Mortality in Mexican Municipalities"
+author: "Candidate Number: 1069216^[MSc Social Data Science, Oxford Internet Institute.]" 
+output:
+  pdf_document:
+    latex_engine: lualatex
+abstract: >
+  This paper analyzes the levels of variation in mortality from Covid-19 in the 2,457 municipalities of Mexico based on social and political covariates. Specifically, the categories proposed by Bosancianu et al. (2020) on 1) state capacity, 2) political institutions, 3) political priorities, and 4) social structures were replicated to understand the capacity of the social sciences to understand the state response to this phenomenon.
+
+  This paper uses a database with 47 social and political variables of the municipalities in Mexico. The variables with the most information and less correlated were identified using a method known as Principal Component Analysis for Mixed Data (PCAMIX). Subsequently, the data was modeled using three types of regression: a) stepwise linear regression, 2) Poisson Regression, and 3) Negative Binomial regression.
+
+  The results show that the state capacity and local political dynamics, such as the mismatch between the party in the federal government and the municipal governments, are significant indicators for understanding the total sum of deaths from Covid-19. Likewise, other social and structural variables, such as GDP per capita, the percentage of the Catholic population, and the percentage of the population with obesity, are also correlated with the dependent variable.
+
+  Thus, this paper shows how the theoretical framework proposed by Bosancianu et al. (2020) can be adapted to a sub-national level for a specific country. However, it also shows the complexities and possible limitations of utilizing the assumptions from the social sciences to a recent phenomenon such as the Covid-19 pandemic.  
+
+  **Key words:** Covid-19; Mortality; Mexico. 
+header-includes:
+    - \usepackage{fancyhdr}
+fontsize: 12pt
+papersize: a4 
+mainfont: Times New Roman 
+---
+\addtolength{\headheight}{1.1cm}
+\pagestyle{fancyplain} 
+\rhead{\includegraphics[height=1.8cm]{OII_logo.jpg}}
+\renewcommand{\headrulewidth}{0pt} 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE,
+                      warning = FALSE,
+                      cache = FALSE
+                      )
+```
+
+
+```{r}
+# Paquetes ----------------------------------------------------------------
+if(!require('pacman')) {install.packages('pacman')}
+pacman::p_load(tidyverse, here, equatiomatic, dotwhisker,
+               MASS, jtools, stargazer, AICcmodavg, DHARMa, broom,
+               gtsummary, broom, kableExtra, gt, skimr)
+
+# Read data and prepare  --------------------------------------------------------------
+covid_data <- read_rds(here("data", "output", "covid_final.rds")) %>% 
+  mutate(log_deaths = log(tot_covid_deaths),
+         log_deaths = na_if(log_deaths, "-Inf"),
+         excess_mortality_log = log(excess_mortality_ssa),
+         excess_mortality_log = na_if(excess_mortality_log, "-Inf"),
+         party_mis_fed_mun_mx = as.factor(party_mis_fed_mun_mx),
+         party_mis_state_mun_mx = as.factor(party_mis_state_mun_mx),
+         party_exec_right_mun_mx = as.factor(party_exec_right_mun_mx),
+         women_exec_mun_mx = as.factor(women_exec_mun_mx)) 
+
+variables_descrption <- read_csv(here("write", "input", "variables-description.csv")) %>% 
+  dplyr::select(2:4) %>% 
+  na.omit()
+
+table_results <- read_csv(here("write", "input", "table-results.csv"))
+```
+
+\newpage
+
+# 1. Introduction 
+
+The Covid-19 pandemic has had a significant impact on global health during the last few years. One of the most critical aspects of understanding the impact of the pandemic is identifying the factors that contribute to the varying levels of mortality across different regions and populations. These outcomes have been studied from various disciplines, including medicine, epidemiology, and statistics. 
+
+The social sciences have also tried to provide different theoretical frameworks to understand the social and state response to mortality levels in different regions. For example, some studies have focused on understanding mortality from Covid-19 and its relationship with the types of regimes and political institutions (Cepaluni et al., 2020), social inequalities (Schellekens & Sourrouille, 2020) or the levels of trust towards governments and public institutions (Bargain & Aminjonov, 2020).
+
+Within these works, Bosancianu et al. (2020) developed a theoretical framework that would unify the main theories and assumptions from political science and political economy in order to explain the response of governments to the patterns of mortality from Covid-19 in different countries.
+
+They generated four categories that allowed grouping covariates related to 1) state capacity, 2) political institutions, 3) political priorities, and 4) social structures. Within their study, the authors identified that these variables help explain the mortality levels from Covid-19 in 166 countries.
+
+This paper replicated the theoretical framework proposed by Bosancianu et al. to try to answer what social and political variables explain covid mortality in Mexican municipalities. It highlights that state capacity and mexican political dynamics are important features to understand Covid-19 mortality at a sub-national level. Likewise, this study joins other efforts in the country that have focused mainly on studying infection registration problems (Díaz-Cayeros, 2020) or on the impact and response from the federal government (Aguilar-Gomez et al., 2021).
+
+To do this, the first part of this paper will detail the framework and main results obtained by Bosancianu et al. within their study. This is important so that the reader understands the logic under which the data used for the Mexican case and the methodological decisions of this work were constructed.
+
+Subsequently, the second part will describe the methods used for the analysis. Specifically, the strategies to identify the optimal number of variables to include in the analysis will be highlighted, as well as an explanation of the selected regression models.
+
+The third part will detail the results based on the data obtained for the 2,457 municipalities of Mexico. Likewise, the fourth part will discuss the implications of these results and the possible causal explanations. Finally, the conclusion will recapitulate the main findings and limitations to consider.
+
+# 2. Theoretical background 
+This paper follows the framework developed by (Bosancianu et al., 2020) to identify the social and political variables that correlate with Covid-19 mortality in 166 countries during the early stages of the pandemic. Their study aimed to test political science and political economy assumptions that would explain state responsiveness to crises such as pandemics. 
+
+For their study, the authors created a dataset of 61 political variables divided into four main categories: 1) state capacity, 2) political institutions, 3) political priorities, and 4) social structures. 
+
+**State capacity** refers to the ability of governments to react to public crises (Bosancianu et al., 2020, p. 4). However, political science studies have had different ways of operationalizing the concept. The concept's multidimensional scope includes the executive's administrative and coercive capacities, the bureaucratic capacity, and the extent of public trust in the government (Bosancianu et al., 2020, pp. 4-5). 
+
+**Political institutions** refer to the government incentives and willingness to react to a public crisis (Bosancianu et al., 2020, p. 3). This includes the degree of vertical and horizontal coordination and the degrees of accountability and political responsiveness of the system (Bosancianu et al., 2020, p. 6). Variables can include taxation capacities, corruption, and state fragility. 
+
+**Political priorities** regard policy choices to face the crisis (Bosancianu et al., 2020, p. 4). These choices can affect the characteristics of the government, its political environment, and the features of the constituencies whose interests the governing party or coalition serves (Bosancianu et al., 2020, p. 8). Variables related to proportional representation, electoral pressures, women leaders, and media independence. 
+
+**social structures** refer to political economy theories on how social divisions may translate into welfare outcomes (Bosancianu et al., 2020, p. 9). The variables for this category can include ethnic diversity, economic inequality, and interpersonal trust. 
+
+**global linkages and environmental risks** where the las featuresthe authors decided to include that do not necessarily relate to the four main categories but can impact the response to a public health crisis. These variables can include underlying health risks such as the prevalence of respiratory diseases, diabetes and health system capacities (Bosancianu et al., 2020, p. 4). 
+
+Based on this framework, the authors identified that including political and social covariates improves the performance of their models (Bosancianu et al., 2020, p. 13). Nonetheless, they also identified that political science and political economy theories are not necessarily well-suited to help us understand coordinated political action for the Covid-19 pandemic (Bosancianu et al., 2020, p. 20). Mixed results were obtained for the variables included in their models based on the four main categories. 
+
+These findings explain the challenge of modeling and understanding a novel health crisis. However, the contribution of this paper relies on building a theoretical framework model for Covid-19 mortalities, which can be replicated for similar studies in regions or country-based analysis.   
+
+
+# 3. Methods 
+
+### 3.1 Data 
+
+This study aims to replicate the theoretical framework established by Bosancianu et al. to understand municipal-level patterns of variation in Covid-19 mortalities of the 2,457 municipalities of Mexico. 
+
+Mexican NGO Data Cívica and the Center for Latin American Studies of Stanford University collected the data. This dataset includes two possible columns for the dependent variable: 1) the cumulative sum of covid deaths in Mexican municipalities and 2) the excess mortality in Mexican municipalities. 
+
+The cumulative sum of covid death records totals from January 2020 until June 2022. The data is collected from the daily reports of Mexico's National Health Ministry (CONACYT, 2022). The excess mortality is calculated as the difference in covid deaths in one year from the average deaths in previous years (2015-2019). The data is collected from the National Institute of Statistics and Geography's yearly reports of defunctions in Mexico and the reports of Mexico's National Health Ministry (INEGI, 2022). It is important to stress that excess mortality is calculated for 2020 and 2021 since the National Institute of Statistics and Geography statistics were not published for 2022 at the time of the data gathering. 
+
+The dataset also contains 43 independent variables that were collected and classified based on the four categories proposed by Bosancianu et al. in their study. Most of the covariates were collected from the National Institute of Statistics and Geography, the National Council for the Evaluation of Social Development Policy (CONEVAL, 2022), the National Electoral Institute, and the National Health Ministry (INE, 2022). 
+
+### 3.2 Empirical strategy 
+For this article, the cumulative sum of deaths from covid-19 was taken as the dependent variable. This is mainly because the cumulative total contains data from the pandemic's beginning in 2020 to mid-2022, covering a more extended time than excess mortality. Likewise, to control for differences in population size, it was decided to transform the variable to a logarithmic scale.
+
+It is essential to note the limitation of this decision. The cumulative total of deaths from covid-19 may have under-reporting problems due to the ability of the authorities to register deaths. This means that the variable is not necessarily documenting deaths from covid-19 but rather the capacities we have socially to observe the phenomenon (See Shah, 2020). Excess mortality can overcome these underreporting problems; however, it was decided not to take it due to the limited availability to calculate it in most of Mexico's municipalities and the data's temporal cutoff.
+
+Subsequently, the independent variables were selected following the theoretical assumptions of Bosancianu et al. However, due to the number of variables, it was also decided to reduce the data dimensions, grouping them into homogeneous groups that are highly related. Since the data includes quantitative and qualitative covariates, the method known as Principal Component Analysis for Mixed Data (PCAMIX) from the ClustOfVar package of the R programming language was used (Chavent et al., 2012).
+
+This allowed generating feature selection of the variables that contain more information in the database and are also less correlated with each other since they do not belong to the same clusters. This step is crucial since highly correlated variables can significantly affect the models used. After this, 14 variables were left for analysis. 
+
+Subsequently, a forward stepwise linear regression was employed at the beginning to model the dependent variable's relationship with the independent variables. This method allows selecting the optimal number of variables for a linear regression starting with one variable at a time and testing which ones significantly improve the model's fit. The optimal model found that 10 of the 14 variables with the best fit and with the lowest Akaike information criterion.
+
+Subsequently, it was decided to use two regression methods for data based on counts. Given that the dependent variable has this type of distribution, these regressions can be an excellent method to explain the relationship between covid mortality and available social and political variables.
+
+Specifically, a Poisson regression and a Negative Binomial regression were used. These models took the ten independent variables identified with stepwise regression. However, the dependent variable uses the total covid deaths without the logarithmic transformation since the models expect the distribution of the counts, including zeros.
+
+Finally, the assumptions of the three models were reviewed to identify possible violations and which may be the one that best explains the relationship between the dependent and independent variables.
+
+
+# 4. Results 
+```{r, echo=FALSE, include=FALSE, warning=FALSE, comment=FALSE}
+# Linear regression  ------------------------------------------------------
+covid_cumulative <- covid_data %>% 
+  dplyr::select(log_deaths, social_backwardness_mx, pct_healthins_mx, 
+                pct_healthins_informal_mx, gdp_percapita_municipal_2020,
+                pct_over65_mx, pop_density_mx, 
+                pct_obesity_lq, women_leg_mun_mx, 
+                pct_catholic_mx, party_mis_state_mun_mx, party_mis_fed_mun_mx, 
+                women_exec_mun_mx,
+                leader_experience_mun_mx) %>% 
+  na.omit()
+
+
+
+### stepwise regression 
+null <- lm(log_deaths ~ 1, data = covid_cumulative)
+full <- lm(log_deaths ~ ., data = covid_cumulative)
+
+
+step_reg <- stepAIC(null, scope = list(lower = null, upper = full),
+                    data = covid_cumulative, 
+                    direction = "forward")
+```
+
+
+```{r}
+# prepare data for count models -------------------------------------------------------------
+covid_binom <- covid_data %>% 
+  dplyr::select(tot_covid_deaths, social_backwardness_mx, pct_healthins_mx, 
+                pct_healthins_informal_mx, gdp_percapita_municipal_2020,
+                pct_over65_mx, pop_density_mx, 
+                pct_obesity_lq, women_leg_mun_mx, 
+                pct_catholic_mx, party_mis_state_mun_mx, party_mis_fed_mun_mx, 
+                women_exec_mun_mx,
+                leader_experience_mun_mx) %>% 
+  na.omit()
+
+```
+
+
+```{r}
+# Poisson reg -------------------------------------------------------------
+poisson_reg <- glm(tot_covid_deaths ~ pct_healthins_mx + pop_density_mx + 
+                         pct_over65_mx + party_mis_fed_mun_mx + social_backwardness_mx + 
+                         pct_obesity_lq + pct_catholic_mx + gdp_percapita_municipal_2020 + 
+                         women_exec_mun_mx + women_leg_mun_mx,
+                      family = poisson(),
+                       data = covid_binom)
+```
+
+
+```{r}
+# Negative binomial  ------------------------------------------------------
+negative_reg <- glm.nb(tot_covid_deaths ~ pct_healthins_mx + pop_density_mx + 
+                         pct_over65_mx + party_mis_fed_mun_mx + social_backwardness_mx + 
+                         pct_obesity_lq + pct_catholic_mx + gdp_percapita_municipal_2020 + 
+                         women_exec_mun_mx + women_leg_mun_mx,
+                       data = covid_binom)
+
+```
+
+```{r}
+tidy_step <- broom::tidy(step_reg) %>% mutate(model = "OLS")
+tidy_poisson <- broom::tidy(poisson_reg) %>% mutate(model = "Poisson")
+tidy_neg <- broom::tidy(negative_reg) %>% mutate(model = "Negative binomial")
+
+models_plots <- rbind(tidy_step, tidy_poisson, tidy_neg)
+```
+
+
+The analysis to understand municipal-level patterns of variation in Covid-19 mortalities of the 2,457 municipalities of Mexico was conducted on 14 that were selected performing PCAMIX to avoid correlation between the covariates. These 14 variables also follow the theoretical framework Bosancianu et al, since at least one of the variables fits in the four categories establieshed in their paper: 1) state capacity, 2) political institutions, 3) political priorities, and 4) social structures.^[A description of the variables and dimensions associated to each of the variables is available in the supplementary inforation section] 
+
+The results from the three models implemented a) stepwise linear regression; b) poisson regression and c) negative binomial regression indicate significant associations between social and political characteristics of the municipalities and the cumulative sum of Covid-19 deaths. 
+
+The following table displays the coefficients of the models implemented: 
+
+### Table 1. Regression table and coefficients
+```{r, results="asis"}
+stargazer(step_reg, poisson_reg, negative_reg, type = 'latex', star.cutoffs = c(.05, .01, .001), 
+          no.space = T, digits = 2, float = FALSE, header=FALSE )
+```
+
+```{r}
+dwplot(models_plots, dodge_size = .08) +
+  theme_bw() + 
+  xlab("Coefficient Estimate") + ylab("") +
+  geom_vline(xintercept = 0, colour = "grey60", linetype = 2) +
+     theme(plot.title = element_text(face="bold"),
+           legend.justification=c(1, 1), legend.position=c(1, 1),
+           legend.background = element_rect(colour="grey80"),
+           legend.title = element_blank()) 
+```
+
+
+
+```{r}
+coeficiente_mismatch_step <- (exp(0.27)-1)*100
+coeficiente_mismatch_step <- round(coeficiente_mismatch_step)
+
+coeficiente_gdp_step <- (exp(0.01)-1)*100
+coeficiente_gdp_step <- round(coeficiente_gdp_step)
+```
+
+
+### 4.1 Stepwise linear regression 
+The analysis began with a forward stepwise regression, aiming to identify a parsimonious model with a high explanatory level with the fewest variables. This model identified 10 of the 14 as achieving the lowest Akaike Information Criterion score.
+
+It is important to remember that the dependent variable is the cumulative sum of the total number of deaths from Covid-19 in municipalities on a logarithmic scale; therefore, to interpret the coefficients, we have to "exponentiate the coefficient, subtract one from this number, and multiply by 100. This gives the percent increase (or decrease) in the response for every one-unit increase in the independent variable" (Ford, 2018).
+
+Following the theoretical assumptions of this paper, the Social Backwardness variable, which serves as a proxy for state capacities since it registers access to basic services such as education and housing, is negatively associated with mortality levels in the municipalities of Mexico.
+
+However, this variable must be interpreted carefully since it has negative and positive values. The municipality lacks essential services if it has a negative value, and the municipality provides most of the essential services if it has a positive value. This means that for the coefficients, when the independent variable is negative (more significant deprivation), deaths from Covid-19 increase, while when the independent variable is positive (less deprivation), deaths from Covid decrease.
+
+Continuing with the political and electoral variables, we find interesting results since the mismatch between the federal government party and the municipal government party is positively associated with the number of deaths from covid in the municipalities.This means that if the municipalities are governed by parties opposed to the federal government, deaths from covid increase by 31% within those municipalities.
+
+Likewise, a negative association in the mortality levels from Covid-19 is found when a woman governs the municipality and when the percentage of women legislators in local congresses increases. However, both variables are not statistically significant in the linear model.
+
+Continuing with the variables related to social structures, the percentage of the Catholic population and GDP per capita is negatively associated with deaths from Covid-19 in the municipalities. For example, with an increase of one unit in GDP per capita, deaths from Covid decrease by 1%.
+
+Finally, global linkages and environmental risks show interesting results. Population density and the percentage of people formally affiliated with a type of health insurance are positively associated with mortality levels. On the other hand, the percentage of people older than 65 years and the percentage of obesity levels in the municipalities are negatively associated with mortality levels. These last results will be discussed in greater detail in the next section of the paper.
+
+
+### 4.2 Count data regression (Poisson and Negative Binomial GLMs)
+
+It was also decided to include two Generalized Linear Models in the analysis. Specifically, a Poisson regression and a Negative Binomial regression were implemented. These regressions may be a better approximation to the modeled phenomenon, given the distribution of the dependent variable, where few municipalities concentrate a high number of deaths from Covid-19.
+
+Likewise, linear regression assumes that the residuals are distributed constantly along the line, with a constant variance (Ford, 2018). However, with count data (deaths), the residuals do not work this way. Also, predictions in a linear regression with counts can be wrong when zeros are counted (Ford, 2018).
+
+In addition, it is vital to consider that the dependent variable is modeled with the total sum of deaths from Covid-19 for both models. The interpretation of the Poisson and Negative Binomial coefficients are taken as for a one unit change in the predictor variable; the difference in the logs of expected counts is expected to change by the respective regression coefficient, given that the other predictor variables in the model are held constant (Bruin, 2006).
+
+For both models, it can be seen that the independent variables significantly associated with the mortality levels from Covid-19 are similar to those identified by the stepwise linear regression. The variables related to state capacity, political and electoral variables, social structures, and global linkages follow the same patterns.
+
+The only notable change is that the Poisson regression does find a significant association for the variable on the presence of a woman who governs at the municipal level. In addition, the Poisson finds a positive and not a negative relationship for this variable so we would interpret this as the municipalities governed by women, compared to the municipalities governed by men, are expected to have a rate of 0.02 times more cumulative deaths, all else held constant.
+
+
+### 4.3 Models assumptions 
+
+```{r}
+# resp <- simulateResiduals(poisson_reg, refit = T)
+# resnb <- simulateResiduals(negative_reg, refit = T)
+
+# testDispersion(resp, plot = F)
+# testDispersion(resnb, plot=F)
+```
+
+Once the results were obtained, the assumptions of the three models were reviewed to identify if they worked correctly for the data with which they were working. The first model that was reviewed was the stepwise linear regression. When reviewing the assumptions, a possible correlation between the residuals and the fitted values was identified, in addition to the fact that the points are not equally spread.
+
+These violations of the assumptions indicate two possibilities. First, there is a non-linear relationship between the variables, so one would have to explore the transformation of one of the independent variables to a polynomial, for example. The second is that the relationship between the residuals does not have a constant variance due to the type of distribution of the dependent variable.
+
+### Graph 1. Liner Model assumptions 
+```{r}
+par(mfrow = c(2, 2))
+plot(step_reg)
+```
+
+
+Subsequently, the assumptions of the Poisson regression and the Negative Binomial regression were reviewed.^[The assumptions tests for these models are included in the supplementary information of the paper] The assumptions of both models are similar, such as linearity in model parameters, independence of individual observations, and the multiplicative effects of independent variables. However, compared with Poisson regression, negative binomial regression allows the conditional variance of the outcome variable to be greater than its conditional mean, which offers greater flexibility in model fitting (Clapham, 2021).
+
+When making the diagnoses, it was identified that the Poisson had overdispersion after performing a test via mean deviance residual fitted vs. simulated-refitted. This same test was carried out for the Negative Binomial, and its result was close to one, a significant p-value, indicating that the Negative Binomial addresses the overdispersion problem (Clapham, 2021). However, we can still detect quantile deviations in the residual vs. predicted plots. 
+
+Due to this, the negative binomial better fits the data taking into consideration the assumptions of the models. However, it is considered that the results obtained are still limited to making causal claims about the mortality phenomenon in Mexican municipalities, given the phenomenon's complexity and the possible omitted variables.
+
+# 5. Discussion
+
+Once the results are obtained, it is essential to ask what the implications are. Above all, when trying to replicate the theoretical approach of Bosancianu et al. at a sub-national level, such as the 2,457 municipalities of Mexico.
+
+### Table 2. Highlited results from regression models
+```{r}
+table_results %>% 
+  dplyr::select(1:3) %>% 
+  kable() %>%
+  kable_styling(latex_options = c("scale_down", "hold_position"))
+```
+
+
+Starting with state capacity, the results indicate that the social backwardness proxy is significantly associated with the cumulative number of deaths from Covid-19. This variable can be a good measure to operationalize a specific conceptualization of state capacity, especially related to the ability to provide public goods (Lindsey, 2021). 
+
+However, this analysis should have included other conceptualizations of state capacity, mainly when it is associated with the state's coercive capacity or the extent of public trust citizens have in their government (Bosancianu et al., 2020).
+
+Likewise, in the original paper, the authors also found mixed results for the state capacity variables that they included. Especially since in their models, they found that state fragility was negatively associated with mortality levels. This means that the characteristics we associate with state strength may have adverse effects (Bosancianu et al., 2020, p. 21).
+Despite this, the state capacity proxy used in the models in this paper is intuitive since the results indicate that the higher the lack of access to essential services such as education and housing, the higher the mortality levels and vice versa.
+
+The political variables related to institutions and political priorities showed interesting results. The results show how the mismatch between the party in the federal government and the party in the municipal government is positively associated with mortality levels in the municipalities.
+
+This has two possible explanations. The first is that a federated system and the fragmentation of parties like the one in the Mexican political system can generate problems of coordination and attention to public crises such as the Covid-19 pandemic.
+
+The second may have more severe implications since there may be incentives from the federal government to favor municipalities governed by the same party and disregard municipalities that the same party does not govern. These dynamics have been seen in the country since the electoral transition in the early 2000s.
+
+Studies have shown how the change in parties at the state level and the mismatch with the federal government have brought higher levels of violence in those states, given that the federal government has stopped sending resources and the presence of security forces (Trejo & Ley, 2020). The same dynamics could be observed at the municipal level. However, causality still needs to be established on this.
+
+Likewise, the variables on the percentage of women in local legislation or whether women are in charge of the municipal government did not show a significant association. This is also consistent with the study by Bosancianu et al. The results also contradict popular discourse or other studies that have indicated that countries and governments led by women had a better response to the pandemic.
+
+That said, it must also be taken into account that the data does not include other covariates that may be associated with categories related to political institutions or political priorities. Unlike the original study, the selected models did not include the levels of infant mortality, which works as a proxy for the quality of democracy (Cayeros et al., 2016). Likewise, other variables, such as freedom of the press, could not be collected in the data from Mexico.
+
+The Mexican study has a significant limitation for the variables on social structures. No variable in the database serves as a proxy for interpersonal trust, and this variable is one of the most significant in the study by Bosancianu et al. Therefore, the results could be systematically different if these data were available.
+
+Despite this, it was found that the percentage of the Catholic population and the per capita GDP of the municipalities are negatively associated with the mortality levels from Covid-19. The variable on the percentage of the Catholic population is interesting since, in general, most of the Mexican population professes this religion. However, over the last few years, the levels have decreased in certain regions associated with southern states, which tend to be poorer and have greater inequalities (De la Torre & Gutiérrez, 2021).
+
+Finally, the variables related to global linkages and environmental risks present challenges and a need for further exploration in the future. It was shown how the population density and the percentage of the population formally affiliated with a type of social security are positively associated with mortality levels in the municipalities.
+
+The positive association of population density may be intuitive due to the virus transmission dynamics. For its part, the percentage of the population affiliated with health systems may have other discussions. One possible explanation is that, at the height of the pandemic, hospitals found it necessary to care for all infected people, regardless of whether they were formally affiliated with the primary health systems.
+
+Another explanation is that affiliated people tend to be older people with more comorbidities. This has been shown in exploratory studies on the response to the pandemic in the first year in Mexico (Jiménez, 2020). However, the relationship is unclear given the results for the other two variables in this category.
+
+Remember that the variables on the percentage of the population over 65 years of age and the percentage of the population with obesity in the municipalities are negatively associated. Although this may be counterintuitive, studies in other regions have also found negative associations of comorbidities such as diabetes and hypertension (Bouba et al., 2021).
+
+
+# 6. Conclusion 
+
+This paper aimed to explain the social and political variables related to the accumulated deaths from Covid-19 in the 2,475 municipalities of Mexico. This was done by adapting the theoretical proposal of Bosancianu et al. to understand the variation levels of mortality from covid worldwide.
+
+The results of the paper indicate that social and political factors are significantly associated with mortality levels in Mexico. The paper identified using three regressions that variables related to state capacity and the presence of parties opposed to the federal government in municipal governments are important predictors for deaths at the geographical level analyzed.
+
+It was also identified that the presence of women in governments and municipal legislation is not significantly associated, contradicting what has been observed in other countries. Likewise, it was identified that social and structural variables such as the percentage of people affiliated with formal health systems or the percentage of the Catholic population in the municipalities are also important indicators.
+
+Despite this, it is important to take possible limitations into account. The first limitation is that the covariates used for the Mexican case tried to follow the categories proposed in the study by Bosancianu et al. However, there may be other indicators that better resemble the variables of the original study. In addition, it is crucial to consider that variables such as interpersonal trust could not be operationalized for the Mexican case, which impacts the original study.
+
+The second limitation is that the models obtained (OLS, Poisson, and Negative Binomial) can be revised to better model the data. Of the three models, the Negative Binomial is the one that best fits the data and has fewer problems with the violation of assumptions. However, possible alternative models or transformations in the data can be explored to give better causal explanations and inferences.
+
+Lastly, the third limitation is the challenge involved in modeling a phenomenon as complex as the Covid-19 virus. This is manifested, for example, in the type of dependent variable that one has. It is essential to remember the problems of under-registration that may exist in municipalities regarding mortality in Covid-19. Likewise, knowledge and advances in the study of the pandemic mean that several of our assumptions have to be constantly updated.
+
+
+\newpage
+
+# References 
+- Aguilar-Gomez, S., Arceo-Gomez, E., De la Cruz Toledo, E., & Torres López, P. J. (2021). Follow the Leader? Public Health Messaging and Containment of Mobility During a Pandemic. Public Health Messaging and Containment of Mobility During a Pandemic (February 15, 2021).
+
+- Bargain, O., & Aminjonov, U. (2020). Trust and compliance to public health policies in times of     COVID-19. _Journal of public economics, 192, 104316_. Retrieved from: https://www.sciencedirect.com/science/article/pii/S0047272720301808?via%3Dihub 
+
+- Bosancianu, C. M., Dionne, K. Y., Hilbig, H., Humphreys, M., KC, S., Lieber, N., & Scacco, A. (2020). Political and social correlates of Covid-19 mortality. _SocArXiv_.
+
+- Bouba, Y., Tsinda, E. K., Fonkou, M. D. M., Mmbando, G. S., Bragazzi, N. L., & Kong, J. D. (2021). The Determinants of the Low COVID-19 Transmission and Mortality Rates in Africa: A Cross-Country Analysis. _Frontiers in public health, 9, 751197_. https://doi.org/10.3389/fpubh.2021.751197 
+
+- Bruin, J (2006, February). _Negative Binomial Regression_. UCLA. https://stats.oarc.ucla.edu/stata/output/negative-binomial-regression/#:~:text=We%20can%20interpret%20the%20negative,in%20the%20model%20are%20held 
+
+- Cepaluni, G., Dorsch, M. T., & Branyiczki, R. (2022). Political regimes and deaths in the early stages of the COVID-19 pandemic. _Journal of public finance and public choice, 37(1), 27-53_. Retrieved from: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3586767 
+
+- Chavent, M., Kuentz-Simonet, V., Liquet, B., & Saracco, J. (2012). ClustOfVar: An R Package for the Clustering of Variables. _Journal of Statistical Software, 50(13), 1–16_. https://doi.org/10.18637/jss.v050.i13
+
+- Clapham, M. (2021, February). _Regression with count data: Poisson and Negative Binomial_ [Video]. Youtube.  https://www.youtube.com/watch?v=uGKnoAw-PFQ
+
+- CONACYT. (2022, January 9). _Covid-19 México_. Gobierno de México. https://datos.covid-19.conacyt.mx/
+
+- CONEVAL. (2022, January 9) _Medición de la pobreza_. CONEVAL. https://www.coneval.org.mx/Medicion/IRS/Paginas/Indice_de_Rezago_Social_2020_anexos.aspx 
+
+- De la Torre, R & Gutiérrez Zúñiga, C. ( 2021, March). _México: menos católico, más diverso y menos religioso que hace una década_. Nexos. https://www.nexos.com.mx/?p=54644 
+
+- Diaz-Cayeros, A & Estévez, F & Magaloni, B (2016. The Political Logic of Poverty Relief: Electoral Strategies and Social Policy in Mexico. Cambridge University Press. 
+
+- Díaz-Cayeros, A. (2020). _La nueva normalidad: ¿Cómo dedicir cuando no hay información_. Revista Gatopardo. https://gatopardo.com/opinion/municipios-de-la-esperanza-como-decidir-cuando-no-hay-informacion/ 
+
+- Ford, C. (2018). _Interpreting log transformations in a linear model_. University of Virginia Library. https://data.library.virginia.edu/interpreting-log-transformations-in-a-linear-model/ 
+
+- INE. (2022, January 9). _Sistema de Consulta de la Estadística de las Elecciones del Proceso Electoral 2017-2018_. INE. https://siceen.ine.mx:3000/#/tablas-resultados
+
+- INEGI. (2022, January 9). _Datos abiertos_. INEGI. https://www.inegi.org.mx/datosabiertos/ 
+
+- Jiménez, G. (2020, November). _¿Tener IMSS como comorbilidad?_ Nexos. https://datos.nexos.com.mx/tener-imss-como-comorbilidad/ 
+
+- Lindsey, B. (2021, November). _State capacity: what is it, how we lost it, and how to get it back_. Niskanen Center. https://www.niskanencenter.org/state-capacity-what-is-it-how-we-lost-it-and-how-to-get-it-back/ 
+
+- Schellekens, P & Sourrouille, D (2020), Covid-19 Mortality in Rich and Poor Countries: A Tale of Two Pandemics? _World Bank Policy Research Working Paper No. 9260, 1-35_. Retrieved from: https://ssrn.com/abstract=3614141
+
+- Shah, T. (2020, April 9). _How many people are infected with Covid-19?_. SIGNIFICANCE. https://www.significancemagazine.com/science/649-how-many-people-are-infected-with-covid-19 
+
+- Trejo, G. & Ley, S. (2020). _Votes, Drugs, and Violence: The Political Logic of Criminal Wars in Mexico_. Cambridge University Press: Studies in Comparative Politics Series. 
+
+
+\newpage
+
+# Supplementary Information 
+
+### 1. Description of variables included in regression models
+```{r}
+kbl(variables_descrption, booktabs = T) %>%
+  kable_styling(latex_options = c("scale_down", "hold_position")) %>% 
+  column_spec(1, bold = T) %>%
+ column_spec(2, width = "30em")
+```
+
+
+### 2. Summary statistics of numeric variables included in regression models
+
+```{r}
+covid_cumulative %>% 
+  dplyr::select(where(is.numeric)) %>% 
+  skim() %>%
+  dplyr::select(skim_variable, n_missing, numeric.mean, numeric.sd) %>% 
+  rename(name = skim_variable) %>% 
+  kable() %>% 
+  kable_styling(latex_options = c("scale_down", "hold_position")) 
+```
+
+
+### 3. Distribution of Covid-19 cumulative deaths in Mexican municipalities
+
+```{r}
+covid_data %>% 
+  ggplot(aes(tot_covid_deaths)) +
+  geom_histogram(fill = "#75B9BE") +
+  scale_x_log10() + 
+  theme_minimal() +
+  labs(
+       subtitle = "January 2020-June 2022", 
+       x = "Log scale",
+       y = ""
+       )
+```
+
+
+### 4. Dispersion test for Poisson regression 
+```{r}
+resp <- simulateResiduals(poisson_reg, refit = T)
+testDispersion(resp, plot = F)
+```
+
+
+### 5. Dispersion test for Negative Binomial regression 
+```{r}
+
+resnb <- simulateResiduals(negative_reg, refit = T)
+testDispersion(resnb, plot=F)
+```
+
+
+
+
+
